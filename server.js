@@ -12,7 +12,7 @@ const clientRoutes = require("./routes/clientRoutes");
 const authRoutes = require("./routes/authRoutes");
 
 const app = express();
-const PORT = process.env.PORT || 4001;
+const PORT = process.env.PORT;
 
 // Middleware
 app.use(helmet());

@@ -1,5 +1,6 @@
 const { Contact, SmsBalance, SmsHistory } = require("../models");
 const { validationResult } = require("express-validator");
+const sendSMS = require("../send_sms");
 
 // Send SMS to contacts
 const sendSms = async (req, res) => {
@@ -88,9 +89,9 @@ const sendSms = async (req, res) => {
       try {
         // Here you would integrate with your SMS gateway
         // For now, we'll simulate successful sending
-        const smsResult = await sendSmsToNumber(contact.phone, message);
+        const smsResult = await sendSMS(contact.phone, message);
 
-        if (smsResult.success) {
+        if (smsResult == 200) {
           sentMessages.push({
             contactId: contact.id,
             name: contact.name,

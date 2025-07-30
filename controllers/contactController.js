@@ -298,76 +298,54 @@ const importContacts = async (req, res) => {
       });
     }
 
-    // Parse CSV lines
     const lines = data.trim().split("\n");
-    const contacts = [];
-    const skippedContacts = [];
+    const contactsToInsert = [];
 
     for (const line of lines) {
       if (!line.trim()) continue;
-
       const [name, phone] = line.split(",").map((item) => item.trim());
+      if (!name || !phone) continue;
 
-      if (!name || !phone) {
-        skippedContacts.push({
-          line,
-          reason: "Invalid format - name and phone required",
-        });
-        continue;
-      }
-
-      contacts.push({ clientId: req.clientId, name, phone });
-    }
-
-    if (contacts.length === 0) {
-      return res.json({
-        success: true,
-        message: "No valid contacts to import",
-        data: { created: 0, skipped: skippedContacts.length },
+      contactsToInsert.push({
+        clientId: req.clientId,
+        name,
+        phone,
       });
     }
 
-    // Find existing phones
-    const existingContacts = await Contact.findAll({
+    // remove duplicates inside CSV itself
+    const uniqueContacts = Array.from(
+      new Map(
+        contactsToInsert.map((c) => [`${c.clientId}-${c.phone}`, c])
+      ).values()
+    );
+
+    // find already existing numbers
+    const existing = await Contact.findAll({
       where: {
         clientId: req.clientId,
-        phone: { [Op.in]: contacts.map((c) => c.phone) },
+        phone: uniqueContacts.map((c) => c.phone),
       },
       attributes: ["phone"],
     });
+    const existingPhones = new Set(existing.map((e) => e.phone));
 
-    const existingPhones = new Set(existingContacts.map((c) => c.phone));
+    const newContacts = uniqueContacts.filter(
+      (c) => !existingPhones.has(c.phone)
+    );
 
-    const newContacts = contacts.filter((c) => {
-      if (existingPhones.has(c.phone)) {
-        skippedContacts.push({
-          name: c.name,
-          phone: c.phone,
-          reason: "Phone number already exists",
-        });
-        return false;
-      }
-      return true;
-    });
-
-    // Bulk insert new contacts
-    let createdContacts = [];
-    if (newContacts.length > 0) {
-      createdContacts = await Contact.bulkCreate(newContacts);
-    }
+    // Bulk insert only new contacts
+    await Contact.bulkCreate(newContacts);
 
     res.json({
       success: true,
       message: "Import completed",
       data: {
-        created: createdContacts.length,
-        skipped: skippedContacts.length,
-        createdContacts,
-        skippedContacts,
+        created: newContacts.length,
+        skipped: existingPhones.size,
       },
     });
   } catch (error) {
-    console.error("Error importing contacts:", error);
     res.status(500).json({
       success: false,
       message: "Error importing contacts",

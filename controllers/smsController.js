@@ -3,7 +3,9 @@ const { validationResult } = require("express-validator");
 const sendSMS = require("../send_sms");
 const addPrefixToPhoneNumber = require("../add_number_prefix");
 
-const MAX_SMS_PER_REQUEST = 100000;
+const MAX_SMS_PER_REQUEST = 100000; // Increased to handle large volumes
+const BATCH_SIZE = 1000; // Adjusted for better performance with large datasets
+const MAX_CONCURRENT_BATCHES = 10; // Limit concurrent batches to manage memory
 
 const sendSms = async (req, res) => {
   const transaction = await SmsBalance.sequelize.transaction();
@@ -136,3 +138,106 @@ const sendSms = async (req, res) => {
 };
 
 module.exports = { sendSms };
+
+// Get SMS balance
+const getSmsBalance = async (req, res) => {
+  try {
+    const smsBalance = await SmsBalance.findOne({
+      where: { clientId: req.clientId },
+    });
+
+    if (!smsBalance) {
+      return res.status(404).json({
+        success: false,
+        message: "SMS balance not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "SMS balance retrieved successfully",
+      data: { smsBalance },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error retrieving SMS balance",
+      error: error.message,
+    });
+  }
+};
+
+// Get SMS history for client
+const getSmsHistory = async (req, res) => {
+  try {
+    const { page = 1, limit = 50 } = req.query;
+    const offset = (page - 1) * limit;
+
+    const { count, rows: smsHistory } = await SmsHistory.findAndCountAll({
+      where: { clientId: req.clientId },
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      order: [["createdAt", "DESC"]],
+    });
+
+    res.json({
+      success: true,
+      message: "SMS history retrieved successfully",
+      data: {
+        smsHistory,
+        pagination: {
+          total: count,
+          page: parseInt(page),
+          pages: Math.ceil(count / limit),
+          limit: parseInt(limit),
+        },
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error retrieving SMS history",
+      error: error.message,
+    });
+  }
+};
+
+// Simulate SMS sending function (replace with actual SMS gateway integration)
+async function sendSmsToNumber(phoneNumber, message) {
+  // This is a placeholder function
+  // Replace with actual SMS gateway integration (e.g., Twilio, AfricasTalking, etc.)
+
+  try {
+    // Simulate API call delay
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Simulate success (you can add logic to simulate some failures)
+    const random = Math.random();
+    if (random < 0.95) {
+      // 95% success rate
+      return {
+        success: true,
+        messageId: `msg_${Date.now()}_${Math.random()
+          .toString(36)
+          .substr(2, 9)}`,
+        status: "sent",
+      };
+    } else {
+      return {
+        success: false,
+        error: "Network error or invalid number",
+      };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
+module.exports = {
+  sendSms,
+  getSmsBalance,
+  getSmsHistory,
+};

@@ -298,8 +298,9 @@ const importContacts = async (req, res) => {
       });
     }
 
+    // Parse CSV lines
     const lines = data.trim().split("\n");
-    const createdContacts = [];
+    const contacts = [];
     const skippedContacts = [];
 
     for (const line of lines) {
@@ -315,38 +316,44 @@ const importContacts = async (req, res) => {
         continue;
       }
 
-      try {
-        // Check if contact already exists
-        const existingContact = await Contact.findOne({
-          where: {
-            clientId: req.clientId,
-            phone: phone,
-          },
-        });
+      contacts.push({ clientId: req.clientId, name, phone });
+    }
 
-        if (existingContact) {
-          skippedContacts.push({
-            name,
-            phone,
-            reason: "Phone number already exists",
-          });
-          continue;
-        }
+    if (contacts.length === 0) {
+      return res.json({
+        success: true,
+        message: "No valid contacts to import",
+        data: { created: 0, skipped: skippedContacts.length },
+      });
+    }
 
-        const contact = await Contact.create({
-          clientId: req.clientId,
-          name,
-          phone,
-        });
+    // Find existing phones
+    const existingContacts = await Contact.findAll({
+      where: {
+        clientId: req.clientId,
+        phone: { [Op.in]: contacts.map((c) => c.phone) },
+      },
+      attributes: ["phone"],
+    });
 
-        createdContacts.push(contact);
-      } catch (error) {
+    const existingPhones = new Set(existingContacts.map((c) => c.phone));
+
+    const newContacts = contacts.filter((c) => {
+      if (existingPhones.has(c.phone)) {
         skippedContacts.push({
-          name,
-          phone,
-          reason: error.message,
+          name: c.name,
+          phone: c.phone,
+          reason: "Phone number already exists",
         });
+        return false;
       }
+      return true;
+    });
+
+    // Bulk insert new contacts
+    let createdContacts = [];
+    if (newContacts.length > 0) {
+      createdContacts = await Contact.bulkCreate(newContacts);
     }
 
     res.json({

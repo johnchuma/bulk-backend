@@ -367,6 +367,7 @@ const importContacts = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("Error importing contacts:", error);
     res.status(500).json({
       success: false,
       message: "Error importing contacts",
